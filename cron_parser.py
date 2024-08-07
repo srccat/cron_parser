@@ -130,6 +130,9 @@ def is_comma_range(value: str) -> Optional[list]:
 
 
 def is_outside_allowed_range(value: int, min: int, max: int):
+    '''
+    Check if value is outside the allowed range for given field
+    '''
     return value < min or value > max
 
 
