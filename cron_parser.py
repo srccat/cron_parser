@@ -1,5 +1,6 @@
 """
-Python3 script for parsing a cron command into its respective elements (minute, hour, day of month, month, day of week, command)
+Python3 script for parsing a cron command into its respective elements
+(minute, hour, day of month, month, day of week, command)
 
 Example input: 
 */15 0 1,15 * 1-5 /usr/bin/find
@@ -12,23 +13,8 @@ month         1 2 3 4 5 6 7 8 9 10 11 12
 day of week   1 2 3 4 5
 command       /usr/bin/find
 
-
-References used for crontab format: 
+References used for crontab format:
 https://docs.hostdime.com/hd/command-line/working-with-cron-jobs
-
-Field	            Accepted Values
-minute	            0-59
-hour	            0-23
-day of the month	1-31
-month	            1-12 or names (see below)
-day of the week	    0-7 (Sunday is 0 or 7) or names
-
-All fields may contain an asterisk (*) which stands for any value.
-Lists are allowed, and are numbers or ranges separated by commas e.g. 1,3,5,7, or 0-7,16-23.
-
-@TODO
-The output should be formatted as a table with the field name taking the first 14 columns and
-the times as a space-separated list following it.
 
 @TODO
 Month and day of the week may also take month/day arguments e.g. 'Monday'
@@ -45,7 +31,7 @@ MINMAX_VALUE_CONFIG = {
     1: (0, 23),
     # day of the month
     2: (1, 31),
-    # month
+    #  month
     3: (1, 12),
     # day of the week
     4: (0, 7)
@@ -61,29 +47,40 @@ CRON_POSITION_CONFIG = {
     5: 'command'
 }
 
+# desired length of header column
 DEFAULT_HEADER_COL_LENGTH = 14
+
 
 def main():
     """
     Main function to parse arguments and print output table
     """
+    output_data, output_table = None, None
     parser = argparse.ArgumentParser()
     parser.add_argument('cron_command', type=str, help='The cron command to be parsed')
     args = parser.parse_args()
 
     cron_command = args.cron_command
-    
-    output_data = parse_cron_command(cron_command)
 
-    output_table = format_output_values(output_data)
-    
-    return
+    try:
+        output_data = parse_cron_command(cron_command)
+    except ValueError as e:
+        msg = f'Error parsing cron: {e}. Please ensure your cron string is in a valid format.'
+        print(msg)
+
+    if output_data:
+        output_table = format_output_values(output_data)
+
+    if output_table:
+        print(output_table)
+
 
 def is_asterisk(value: str) -> bool:
     '''
     Check if cron value is * value (all legal values allowed)
     '''
     return True if value == '*' else False
+
 
 def is_single_number(value: str) -> bool:
     '''
@@ -94,6 +91,7 @@ def is_single_number(value: str) -> bool:
         return True
     except ValueError:
         return False
+
 
 def is_dash_range(value: str) -> Tuple[Optional[int], Optional[int]]:
     '''
@@ -109,6 +107,7 @@ def is_dash_range(value: str) -> Tuple[Optional[int], Optional[int]]:
             raise ValueError('Invalid range values supplied')
     return start_num, end_num
 
+
 def is_interval(value: str) -> Optional[int]:
     '''
     Check if cron value is an interval value */x
@@ -119,6 +118,7 @@ def is_interval(value: str) -> Optional[int]:
         interval = int(interval_list[-1])
     return interval
 
+
 def is_comma_range(value: str) -> Optional[list]:
     '''
     Check if cron value is a comma range x,y,z
@@ -127,6 +127,10 @@ def is_comma_range(value: str) -> Optional[list]:
     if ',' in value:
         value_list = value.split(',')
     return value_list
+
+
+def is_outside_allowed_range(value: int, min: int, max: int):
+    return value < min or value > max
 
 
 def parse_cron_command(cron_command: str) -> dict:
@@ -142,64 +146,74 @@ def parse_cron_command(cron_command: str) -> dict:
         'command': []
     }
 
-    try:
-        cron_list = cron_command.split(' ')
+    cron_list = cron_command.split(' ')
 
-        for idx, cron_value in enumerate(cron_list):
-            current_cron_value = CRON_POSITION_CONFIG[idx]
-            if current_cron_value == 'command':
-                output_dict['command'].append(cron_value)
+    for idx, cron_value in enumerate(cron_list):
+        current_cron_value = CRON_POSITION_CONFIG[idx]
+        if current_cron_value == 'command':
+            output_dict['command'].append(cron_value)
+        else:
+            min_value = MINMAX_VALUE_CONFIG[idx][0]
+            max_value = MINMAX_VALUE_CONFIG[idx][1]
+
+            start, end = is_dash_range(cron_value)
+            comma_range_list = is_comma_range(cron_value)
+            interval_value = is_interval(cron_value)
+
+            # check if asterisk *
+            if is_asterisk(cron_value):
+                for i in range(min_value, max_value + 1):
+                    output_dict[current_cron_value].append(str(i))
+
+            # check if single digit x format
+            elif is_single_number(cron_value):
+                if is_outside_allowed_range(int(cron_value), min_value, max_value):
+                    msg = f'{current_cron_value} value is outside allowed range'
+                    raise ValueError(msg)
+
+                output_dict[current_cron_value].append(str(cron_value))
+
+            # check if interval */x format
+            elif is_interval(cron_value):
+                for i in range(min_value, max_value, interval_value):
+                    output_dict[current_cron_value].append(str(i))
+
+            # check if range x-y format
+            elif (start == 0 or start) and end:
+                # filter out invalid values
+                if is_outside_allowed_range(start, min_value, max_value):
+                    msg = f'{current_cron_value} start value is outside allowed range'
+                    raise ValueError(msg)
+                if is_outside_allowed_range(end, min_value, max_value):
+                    msg = f'{current_cron_value} end value is outside allowed range'
+                    raise ValueError(msg)
+
+                for i in range(start, end + 1):
+                    output_dict[current_cron_value].append(str(i))
+
+            # check if range x,y,z format
+            elif comma_range_list:
+                for i in comma_range_list:
+                    if is_outside_allowed_range(int(i), min_value, max_value):
+                        msg = f'{current_cron_value} value is outside allowed range'
+                        raise ValueError(msg)
+
+                    output_dict[current_cron_value].append(str(i))
+
             else:
-                min_value = MINMAX_VALUE_CONFIG[idx][0]
-                max_value = MINMAX_VALUE_CONFIG[idx][1]
-
-                start, end = is_dash_range(cron_value)
-                comma_range_list = is_comma_range(cron_value)
-                interval_value = is_interval(cron_value)
-
-                # check if asterisk *
-                if is_asterisk(cron_value):
-                    # print('%s is asterisk' % current_cron_value)
-                    for i in range(min_value, max_value + 1):
-                        output_dict[current_cron_value].append(str(i))
-
-                # check if single digit x format
-                elif is_single_number(cron_value):
-                    # print('%s is single number' % current_cron_value)
-                    output_dict[current_cron_value].append(str(cron_value))
-
-                # check if interval */x format
-                elif is_interval(cron_value):
-                    # print('%s is interval' % current_cron_value)
-                    for i in range(min_value, max_value, interval_value):
-                        output_dict[current_cron_value].append(str(i))
-
-                # check if range x-y format
-                elif start and end:
-                    # print('%s is dash range' % current_cron_value)
-                    for i in range(start, end + 1):
-                        output_dict[current_cron_value].append(str(i))
-
-                # check if range x,y,z format
-                elif comma_range_list:
-                    # print('%s is comma range' % current_cron_value)
-                    for i in comma_range_list:
-                        output_dict[current_cron_value].append(str(i))
-    
-                else:
-                    raise ValueError(f'Invalid format provided for {CRON_POSITION_CONFIG[idx]}, please try again')
-
-    except Exception as e:
-        # @TODO error handling
-        print(e)
+                msg = f'Invalid format for {CRON_POSITION_CONFIG[idx]} field'
+                raise ValueError(msg)
 
     return output_dict
+
 
 def format_output_values(output_data: dict) -> str:
     '''
     Format output data into a table with first column length of 14 
     and the values following as a space-separated list
     '''
+    formatted_output = ''
+
     for header, values in output_data.items():
         formatted_header = header
         formatted_values = ''
@@ -207,12 +221,13 @@ def format_output_values(output_data: dict) -> str:
         if header_length < DEFAULT_HEADER_COL_LENGTH:
             spaces_to_add = ' ' * (DEFAULT_HEADER_COL_LENGTH - header_length)
             formatted_header = f'{header}{spaces_to_add}'
-        
-        formatted_values = reduce(lambda x,y: x + ' ' + y, values)
 
-    formatted_output = f'{formatted_header}{formatted_values}'
-    
+        formatted_values = reduce(lambda x, y: x + ' ' + y, values)
+
+        formatted_output += f'{formatted_header}{formatted_values}\n'
+
     return formatted_output
+
 
 if __name__ == "__main__":
     main()
