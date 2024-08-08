@@ -12,11 +12,3 @@ To run tests:
 
 To run this program, please first ensure you have Python 3.12.4 installed on your system.
 Then, open up a terminal and run a command following the example structure above, replacing the cron command with one you would like to parse.
-The output will be a table in the following example format:
-
-minute        0 15 30 45
-hour          0
-day of month  1 15
-month         8
-day of week   0 1 2 3 4 5
-command       /usr/bin/find

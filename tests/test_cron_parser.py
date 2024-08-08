@@ -3,12 +3,6 @@ from cron_parser import parse_cron_command, format_output_values
 
 
 class TestCronParser(unittest.TestCase):
-    def setUp(self):
-        self.setup_test_data()
-
-    def setup_test_data(self):
-        pass
-
     def test_parser_succeeds_with_valid_cron(self):
         valid_cron = '*/15 0 1,15 * 1-5 /usr/bin/find'
         expected_output = {
